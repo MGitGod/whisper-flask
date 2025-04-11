@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Whisper 議事録 Flask版</title>
+  </head>
+  <body>
+    <h1>🎙️ Whisper リアルタイム議事録</h1>
+    <button id="startBtn">⏺️ 録音開始</button>
+    <button id="stopBtn" disabled>⏹️ 録音停止</button>
+    <p id="status"></p>
+
+    <h2>📝 議事録</h2>
+    <ul id="transcriptionList"></ul>
+
+    <script>
+      let mediaRecorder;
+      let audioChunks = [];
+
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const status = document.getElementById("status");
+      const list = document.getElementById("transcriptionList");
+
+      startBtn.onclick = async () => {
+        audioChunks = [];
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(audioChunks, { type: "audio/wav" });
+          const formData = new FormData();
+          formData.append("audio_data", blob, "recording.wav");
+
+          status.textContent =
+            "文字起こしを処理中です。しばらくお待ちください...";
+
+          const res = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          const result = await res.json();
+          if (result.transcription) {
+            result.transcription.forEach((line) => {
+              const li = document.createElement("li");
+              li.textContent = line;
+              list.appendChild(li);
+            });
+            status.textContent = "✅ 文字起こしが完了しました！";
+          } else {
+            status.textContent =
+              "❌ エラーが発生しました: " + (result.error || "詳細不明");
+          }
+        };
+
+        mediaRecorder.start();
+        status.textContent = "🎙️ 録音中です...";
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      };
+
+      stopBtn.onclick = () => {
+        mediaRecorder.stop();
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        status.textContent = "録音を停止しました。";
+      };
+    </script>
+  </body>
+</html>
